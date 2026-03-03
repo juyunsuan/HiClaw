@@ -2,11 +2,10 @@
 
 ### 1. Read state.json
 
-Read state.json locally (sync first with mc cp if not already):
+Read state.json (local only, no sync needed):
 
 ```bash
-mc cp hiclaw/hiclaw-storage/agents/manager/state.json ~/hiclaw-fs/agents/manager/state.json 2>/dev/null || true
-cat ~/hiclaw-fs/agents/manager/state.json
+cat ~/state.json
 ```
 
 The `active_tasks` field in state.json contains all in-progress tasks (both finite and infinite). No need to iterate over all meta.json files.
@@ -44,16 +43,16 @@ If conditions are met, @mention the Worker in the corresponding room_id to trigg
   @{worker}:{domain} It's time to run your scheduled task {task-id} "{task-title}". Please execute it now and report back with the keyword "executed".
 ```
 
-**Note**: Infinite tasks are never removed from active_tasks. After the Worker reports `executed`, the Manager updates `last_executed_at` and `next_scheduled_at`, then syncs state.json via mc cp.
+**Note**: Infinite tasks are never removed from active_tasks. After the Worker reports `executed`, the Manager updates `last_executed_at` and `next_scheduled_at` in `~/state.json`.
 
 ---
 
 ### 4. Project Progress Monitoring
 
-Scan plan.md for all active projects under ~/hiclaw-fs/shared/projects/:
+Scan plan.md for all active projects under /root/hiclaw-fs/shared/projects/:
 
 ```bash
-for meta in ~/hiclaw-fs/shared/projects/*/meta.json; do
+for meta in /root/hiclaw-fs/shared/projects/*/meta.json; do
   cat "$meta"
 done
 ```

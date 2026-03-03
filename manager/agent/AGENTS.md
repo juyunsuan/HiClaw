@@ -1,8 +1,8 @@
 # Manager Agent Workspace
 
 - **Your workspace:** `~/` (SOUL.md, openclaw.json, memory/, skills/, state.json, workers-registry.json — local only, host-mountable, never synced to MinIO)
-- **Shared space:** `~/hiclaw-fs/shared/` (tasks, knowledge, collaboration data — synced with MinIO)
-- **Worker files:** `~/hiclaw-fs/agents/<worker-name>/` (visible to you via MinIO mirror)
+- **Shared space:** `/root/hiclaw-fs/shared/` (tasks, knowledge, collaboration data — synced with MinIO)
+- **Worker files:** `/root/hiclaw-fs/agents/<worker-name>/` (visible to you via MinIO mirror)
 
 ## Host File Access Permissions
 
@@ -117,8 +117,8 @@ When assigning tasks to Workers:
 1. Generate unique task ID: `task-YYYYMMDD-HHMMSS`
 2. Create task directory and write metadata + spec:
    ```bash
-   mkdir -p ~/hiclaw-fs/shared/tasks/{task-id}
-   cat > ~/hiclaw-fs/shared/tasks/{task-id}/meta.json << 'EOF'
+   mkdir -p /root/hiclaw-fs/shared/tasks/{task-id}
+   cat > /root/hiclaw-fs/shared/tasks/{task-id}/meta.json << 'EOF'
    {
      "task_id": "task-YYYYMMDD-HHMMSS",
      "type": "finite",
@@ -129,17 +129,25 @@ When assigning tasks to Workers:
      "completed_at": null
    }
    EOF
-   cat > ~/hiclaw-fs/shared/tasks/{task-id}/spec.md << 'EOF'
+   cat > /root/hiclaw-fs/shared/tasks/{task-id}/spec.md << 'EOF'
    ...complete task spec (requirements, acceptance criteria, context, examples)...
    EOF
    ```
-3. Notify Worker in their Room with a brief summary and spec file path:
+3. Notify Worker in their Room with a brief summary and spec file path.
+   First, check if the Worker has the `find-skills` skill:
+   ```bash
+   test -d /root/hiclaw-fs/agents/{worker}/skills/find-skills && echo yes
+   ```
+   Then send the notification — include the `find-skills` hint only if the skill exists:
    ```
    @{worker}:{domain} You have a new task [{task-id}]: {task title}
 
    {2-3 sentence summary: task purpose and key deliverables}
 
-   Full spec: ~/hiclaw-fs/shared/tasks/{task-id}/spec.md
+   Full spec: /root/hiclaw-fs/shared/tasks/{task-id}/spec.md
+
+   💡 You have the `find-skills` skill — if you need capabilities beyond your current toolkit, run `skills find <keyword>` to search for installable skills that can help.   ← include only if find-skills skill exists
+
    Please @mention me when complete.
    ```
 4. Add task to state.json `active_tasks` (see State File section below)
@@ -168,8 +176,8 @@ For recurring/scheduled tasks (e.g., daily news collection):
 
 1. Create task directory and write metadata + spec:
    ```bash
-   mkdir -p ~/hiclaw-fs/shared/tasks/{task-id}
-   cat > ~/hiclaw-fs/shared/tasks/{task-id}/meta.json << 'EOF'
+   mkdir -p /root/hiclaw-fs/shared/tasks/{task-id}
+   cat > /root/hiclaw-fs/shared/tasks/{task-id}/meta.json << 'EOF'
    {
      "task_id": "task-YYYYMMDD-HHMMSS",
      "type": "infinite",
@@ -181,7 +189,7 @@ For recurring/scheduled tasks (e.g., daily news collection):
      "assigned_at": "<ISO-8601>"
    }
    EOF
-   cat > ~/hiclaw-fs/shared/tasks/{task-id}/spec.md << 'EOF'
+   cat > /root/hiclaw-fs/shared/tasks/{task-id}/spec.md << 'EOF'
    ...complete task spec including execution guidelines for each run...
    EOF
    ```
@@ -201,7 +209,7 @@ Trigger message format:
 
 ## State File (state.json)
 
-Path: `state.json`
+Path: `~/state.json`
 
 This file is the single source of truth for active tasks. The heartbeat reads it instead of scanning all meta.json files.
 
@@ -239,9 +247,9 @@ This file is the single source of truth for active tasks. The heartbeat reads it
 | Create an infinite task | Add entry to `active_tasks` (type=infinite, with schedule/timezone/next_scheduled_at) |
 | Finite task completed | Remove the task_id from `active_tasks` |
 | Infinite task executed | Update `last_executed_at`, recalculate `next_scheduled_at` |
-| After every write | Update `updated_at` (state.json is local only — no MinIO sync needed) |
+| After every write | Update `updated_at` (no sync needed — local only) |
 
-If `state.json` does not exist yet, create it with `{"active_tasks": [], "updated_at": "<ISO-8601>"}`.
+If `~/state.json` does not exist yet, create it with `{"active_tasks": [], "updated_at": "<ISO-8601>"}`.
 
 ## Management Skills
 

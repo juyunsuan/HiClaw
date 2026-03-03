@@ -47,10 +47,22 @@ fi
 ADMIN_USER="${HICLAW_ADMIN_USER:-admin}"
 ADMIN_PASSWORD="${HICLAW_ADMIN_PASSWORD:-}"
 MATRIX_DOMAIN="${HICLAW_MATRIX_DOMAIN:-matrix-local.hiclaw.io:${HICLAW_PORT_GATEWAY:-8080}}"
-MATRIX_URL="http://${MATRIX_DOMAIN}"
 WAIT_FOR_REPLY="${REPLAY_WAIT:-1}"
 REPLY_TIMEOUT="${REPLAY_TIMEOUT:-300}"
 MANAGER_USER="manager"
+MANAGER_CONTAINER="${REPLAY_MANAGER_CONTAINER:-hiclaw-manager}"
+
+# When REPLAY_USE_DOCKER_EXEC=1, all Matrix API calls go through docker exec
+# inside the container using the internal Tuwunel port. This avoids host proxy
+# interference and works even when the gateway port isn't directly accessible.
+USE_DOCKER_EXEC="${REPLAY_USE_DOCKER_EXEC:-0}"
+if [ "${USE_DOCKER_EXEC}" = "1" ]; then
+    MATRIX_URL="http://127.0.0.1:6167"
+    CURL_PREFIX="docker exec ${MANAGER_CONTAINER}"
+else
+    MATRIX_URL="http://${MATRIX_DOMAIN}"
+    CURL_PREFIX=""
+fi
 
 # ============================================================
 # Utility functions
@@ -74,22 +86,22 @@ matrix_api() {
     local path="$2"
     local data="$3"
     local token="$4"
-    local auth_header=""
 
+    local auth_args=()
     if [ -n "${token}" ]; then
-        auth_header="-H \"Authorization: Bearer ${token}\""
+        auth_args+=(-H "Authorization: Bearer ${token}")
     fi
 
     if [ -n "${data}" ]; then
-        eval curl -sf -X "${method}" \
-            -H "'Content-Type: application/json'" \
-            ${auth_header} \
-            -d "'${data}'" \
-            "'${MATRIX_URL}${path}'"
+        ${CURL_PREFIX} curl -sf -X "${method}" \
+            -H "Content-Type: application/json" \
+            "${auth_args[@]}" \
+            -d "${data}" \
+            "${MATRIX_URL}${path}"
     else
-        eval curl -sf -X "${method}" \
-            ${auth_header} \
-            "'${MATRIX_URL}${path}'"
+        ${CURL_PREFIX} curl -sf -X "${method}" \
+            "${auth_args[@]}" \
+            "${MATRIX_URL}${path}"
     fi
 }
 
@@ -299,7 +311,6 @@ fi
 # and processing Matrix events, then verify Manager has joined the DM room.
 READY_TIMEOUT="${REPLAY_READY_TIMEOUT:-300}"
 READY_ELAPSED=0
-MANAGER_CONTAINER="${REPLAY_MANAGER_CONTAINER:-hiclaw-manager}"
 MANAGER_FULL_ID="@${MANAGER_USER}:${MATRIX_DOMAIN}"
 
 log "Waiting for Manager agent to be ready..."

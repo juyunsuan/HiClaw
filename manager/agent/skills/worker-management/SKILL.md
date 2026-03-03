@@ -29,6 +29,28 @@ No need to set defaults - these are always available in the container environmen
 
 ## Create a Worker
 
+### Step 0: Ask Admin about Find-Skills (IMPORTANT)
+
+**Before creating any Worker, you MUST ask the admin about find-skills configuration.**
+
+Ask the admin:
+
+> **Find-Skills Configuration**
+>
+> Workers can discover and install new skills from the Agent Skills ecosystem (skills.sh) to extend their capabilities.
+>
+> **Security Note**: Workers run in completely isolated containers and **cannot access any of admin's personal sensitive data**. You can safely enable this feature.
+>
+> Please choose:
+> 1. **Enable find-skills** (Recommended) - Worker can search and install skills
+> 2. **Disable** - Worker can only use pre-installed skills from Manager
+>
+> If enabled, do you need to specify a private skill registry URL? (Leave empty to use public https://skills.sh)
+
+Wait for admin's response and record:
+- `enable_find_skills`: true/false
+- `skills_api_url`: custom URL or empty (default: https://skills.sh)
+
 ### Step 1: Write SOUL.md
 
 Write the Worker's identity file based on the human admin's description:
@@ -76,7 +98,7 @@ Pass the matched skills as a comma-separated string to `--skills`, e.g. `file-sy
 The script handles everything: Matrix registration, room creation, Higress consumer, AI/MCP authorization, config generation, MinIO sync, skills push, and container startup.
 
 ```bash
-bash /opt/hiclaw/agent/skills/worker-management/scripts/create-worker.sh --name <WORKER_NAME> [--model <MODEL_ID>] [--mcp-servers s1,s2] [--skills s1,s2] [--remote]
+bash /opt/hiclaw/agent/skills/worker-management/scripts/create-worker.sh --name <WORKER_NAME> [--model <MODEL_ID>] [--mcp-servers s1,s2] [--skills s1,s2] [--find-skills] [--skills-api-url <URL>] [--remote]
 ```
 
 **Parameters**:
@@ -84,6 +106,8 @@ bash /opt/hiclaw/agent/skills/worker-management/scripts/create-worker.sh --name 
 - `--model`: optional, bare model name (e.g. `qwen3.5-plus`). Defaults to `${HICLAW_DEFAULT_MODEL}`
 - `--mcp-servers`: optional, comma-separated MCP server names. Defaults to all existing MCP servers
 - `--skills`: comma-separated skill names determined in Step 1.5 (e.g. `file-sync,github-operations`). Defaults to `file-sync` if omitted. `file-sync` is always included automatically
+- `--find-skills`: enable find-skills capability (allows Worker to discover and install skills from skills.sh or private registry)
+- `--skills-api-url`: custom skills registry URL (default: https://skills.sh). Only used when `--find-skills` is set
 - `--remote`: force output install command instead of starting container locally
 
 **Deployment behavior** (without `--remote`):

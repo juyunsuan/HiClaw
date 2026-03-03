@@ -37,10 +37,10 @@ done
 # Validate arguments
 if [ -z "${WORKER_NAME}" ] && [ -z "${SKILL_NAME}" ]; then
     echo "Usage:"
-    echo "  push-worker-skills.sh --worker <name>"
-    echo "  push-worker-skills.sh --skill <skill-name>"
-    echo "  push-worker-skills.sh --worker <name> --add-skill <skill-name>"
-    echo "  push-worker-skills.sh --worker <name> --remove-skill <skill-name>"
+    echo "  push-worker-skills.sh --worker <name>                    # Push all skills for worker"
+    echo "  push-worker-skills.sh --skill <skill-name>               # Push skill to all workers"
+    echo "  push-worker-skills.sh --worker <name> --add-skill <name> # Add skill to worker"
+    echo "  push-worker-skills.sh --worker <name> --remove-skill <name> # Remove skill"
     echo "  [--no-notify]"
     exit 1
 fi
@@ -56,7 +56,7 @@ if [ -n "${SKILL_NAME}" ] && ([ -n "${ADD_SKILL}" ] || [ -n "${REMOVE_SKILL}" ])
 fi
 
 REGISTRY_FILE="${HOME}/workers-registry.json"
-WORKER_SKILLS_DIR="${HOME}/worker-skills"
+WORKER_SKILLS_DIR="/opt/hiclaw/agent/worker-skills"
 MATRIX_DOMAIN="${HICLAW_MATRIX_DOMAIN:-matrix-local.hiclaw.io:8080}"
 
 # ============================================================
@@ -103,6 +103,7 @@ _worker_exists() {
 _push_skill_to_worker() {
     local worker="$1"
     local skill="$2"
+    local skill_dst="hiclaw/hiclaw-storage/agents/${worker}/skills/${skill}/"
 
     if [ "${skill}" = "file-sync" ]; then
         # file-sync is now managed by Manager's worker-agent/ directory
@@ -128,7 +129,7 @@ _push_skill_to_worker() {
     fi
 
     log "  Pushing skill '${skill}' to worker '${worker}'..."
-    mc mirror "${skill_src}/" "hiclaw/hiclaw-storage/agents/${worker}/skills/${skill}/" --overwrite \
+    mc mirror "${skill_src}/" "${skill_dst}" --overwrite \
         2>&1 | tail -3 || {
         log "  WARNING: Failed to push skill '${skill}' to worker '${worker}'"
         return 1

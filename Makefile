@@ -329,9 +329,9 @@ uninstall: ## Stop and remove Manager + all Worker containers
 replay: ## Send a task to Manager (TASK="..." or interactive, YOLO mode auto-enabled)
 	@docker exec hiclaw-manager touch /root/manager-workspace/yolo-mode 2>/dev/null || true
 ifdef TASK
-	./scripts/replay-task.sh "$(TASK)"
+	REPLAY_USE_DOCKER_EXEC=1 ./scripts/replay-task.sh "$(TASK)"
 else
-	./scripts/replay-task.sh
+	REPLAY_USE_DOCKER_EXEC=1 ./scripts/replay-task.sh
 endif
 
 replay-log: ## View the latest replay conversation log

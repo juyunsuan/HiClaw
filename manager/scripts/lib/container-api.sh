@@ -78,7 +78,8 @@ container_get_manager_ip() {
 }
 
 # Create and start a Worker container
-# Usage: container_create_worker <worker_name> [fs_access_key] [fs_secret_key]
+# Usage: container_create_worker <worker_name> [fs_access_key] [fs_secret_key] [extra_env_json]
+#   extra_env_json: optional JSON array of additional environment variables, e.g. '["SKILLS_API_URL=https://example.com"]'
 # Returns: container ID on success, empty on failure
 container_create_worker() {
     local worker_name="$1"
@@ -97,6 +98,7 @@ container_create_worker() {
     local fs_endpoint="http://${fs_domain}:8080"
     local fs_access_key="${2:-${HICLAW_MINIO_USER:-${HICLAW_ADMIN_USER:-admin}}}"
     local fs_secret_key="${3:-${HICLAW_MINIO_PASSWORD:-${HICLAW_ADMIN_PASSWORD:-admin}}}"
+    local extra_env="${4:-[]}"
 
     # Build ExtraHosts for local domains (*-local.hiclaw.io) that need
     # in-container resolution back to the Manager. Skip if user provides
@@ -136,17 +138,23 @@ container_create_worker() {
     fi
 
     local worker_home="/root/hiclaw-fs/agents/${worker_name}"
+
+    # Build base environment variables
+    local base_env='["HOME='"${worker_home}"'","HICLAW_WORKER_NAME='"${worker_name}"'","HICLAW_FS_ENDPOINT='"${fs_endpoint}"'","HICLAW_FS_ACCESS_KEY='"${fs_access_key}"'","HICLAW_FS_SECRET_KEY='"${fs_secret_key}"'"]'
+
+    # Merge with extra environment variables if provided
+    local all_env
+    if [ "${extra_env}" != "[]" ] && [ -n "${extra_env}" ]; then
+        all_env=$(echo "${base_env} ${extra_env}" | jq -s 'add')
+    else
+        all_env="${base_env}"
+    fi
+
     local create_payload
     create_payload=$(cat <<PAYLOAD
 {
     "Image": "${WORKER_IMAGE}",
-    "Env": [
-        "HOME=${worker_home}",
-        "HICLAW_WORKER_NAME=${worker_name}",
-        "HICLAW_FS_ENDPOINT=${fs_endpoint}",
-        "HICLAW_FS_ACCESS_KEY=${fs_access_key}",
-        "HICLAW_FS_SECRET_KEY=${fs_secret_key}"
-    ],
+    "Env": ${all_env},
     "WorkingDir": "${worker_home}",
     "HostConfig": ${host_config}
 }

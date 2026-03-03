@@ -6,7 +6,7 @@
 # MinIO sync, skills push, and container startup.
 #
 # Usage:
-#   create-worker.sh --name <NAME> [--model <MODEL_ID>] [--mcp-servers s1,s2] [--skills s1,s2] [--remote]
+#   create-worker.sh --name <NAME> [--model <MODEL_ID>] [--mcp-servers s1,s2] [--skills s1,s2] [--find-skills] [--skills-api-url <URL>] [--remote]
 #
 # Prerequisites:
 #   - SOUL.md must already exist at ~/hiclaw-fs/agents/<NAME>/SOUL.md
@@ -25,6 +25,8 @@ MODEL_ID=""
 MCP_SERVERS=""
 WORKER_SKILLS="file-sync"
 REMOTE_MODE=false
+ENABLE_FIND_SKILLS=false
+SKILLS_API_URL=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -32,14 +34,23 @@ while [ $# -gt 0 ]; do
         --model)      MODEL_ID="$2"; shift 2 ;;
         --mcp-servers) MCP_SERVERS="$2"; shift 2 ;;
         --skills)     WORKER_SKILLS="$2"; shift 2 ;;
+        --find-skills) ENABLE_FIND_SKILLS=true; shift ;;
+        --skills-api-url) SKILLS_API_URL="$2"; shift 2 ;;
         --remote)     REMOTE_MODE=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
 
 if [ -z "${WORKER_NAME}" ]; then
-    echo "Usage: create-worker.sh --name <NAME> [--model <MODEL_ID>] [--mcp-servers s1,s2] [--skills s1,s2] [--remote]"
+    echo "Usage: create-worker.sh --name <NAME> [--model <MODEL_ID>] [--mcp-servers s1,s2] [--skills s1,s2] [--find-skills] [--skills-api-url <URL>] [--remote]"
     exit 1
+fi
+
+# If find-skills is enabled, add it to the skills list
+if [ "${ENABLE_FIND_SKILLS}" = true ]; then
+    if ! echo "${WORKER_SKILLS}" | grep -q '\bfind-skills\b'; then
+        WORKER_SKILLS="${WORKER_SKILLS},find-skills"
+    fi
 fi
 
 MATRIX_DOMAIN="${HICLAW_MATRIX_DOMAIN:-matrix-local.hiclaw.io:8080}"
@@ -506,7 +517,7 @@ mv /tmp/workers-registry-updated.json "${REGISTRY_FILE}"
 
 log "  Registry updated for ${WORKER_NAME}: skills=${SKILLS_WITH_FILESYNC}"
 
-# Push non-file-sync skills to worker's MinIO workspace (Worker not yet started, no notification)
+# Push skills to worker's MinIO workspace (Worker not yet started, no notification)
 bash /opt/hiclaw/agent/skills/worker-management/scripts/push-worker-skills.sh \
     --worker "${WORKER_NAME}" --no-notify \
     || log "  WARNING: push-worker-skills.sh returned non-zero (non-fatal)"
@@ -528,7 +539,26 @@ _build_install_cmd() {
     local fs_access_key="${WORKER_NAME}"
     local fs_secret_key="${WORKER_MINIO_PASSWORD}"
 
-    echo "bash hiclaw-install.sh worker --name ${WORKER_NAME} --fs ${fs_endpoint} --fs-key ${fs_access_key} --fs-secret ${fs_secret_key}"
+    local cmd="bash hiclaw-install.sh worker --name ${WORKER_NAME} --fs ${fs_endpoint} --fs-key ${fs_access_key} --fs-secret ${fs_secret_key}"
+
+    # Add find-skills related options if enabled
+    if [ "${ENABLE_FIND_SKILLS}" = true ]; then
+        cmd="${cmd} --find-skills"
+        if [ -n "${SKILLS_API_URL}" ]; then
+            cmd="${cmd} --skills-api-url ${SKILLS_API_URL}"
+        fi
+    fi
+
+    echo "${cmd}"
+}
+
+# Build extra environment variables JSON for container creation
+_build_extra_env() {
+    local extra_env="[]"
+    if [ "${ENABLE_FIND_SKILLS}" = true ] && [ -n "${SKILLS_API_URL}" ]; then
+        extra_env='["SKILLS_API_URL='"${SKILLS_API_URL}"'"]'
+    fi
+    echo "${extra_env}"
 }
 
 if [ "${REMOTE_MODE}" = true ]; then
@@ -536,7 +566,8 @@ if [ "${REMOTE_MODE}" = true ]; then
     INSTALL_CMD=$(_build_install_cmd)
 elif container_api_available; then
     log "Step 9: Starting Worker container locally..."
-    CREATE_OUTPUT=$(container_create_worker "${WORKER_NAME}" "${WORKER_NAME}" "${WORKER_MINIO_PASSWORD}" 2>&1) || true
+    EXTRA_ENV_JSON=$(_build_extra_env)
+    CREATE_OUTPUT=$(container_create_worker "${WORKER_NAME}" "${WORKER_NAME}" "${WORKER_MINIO_PASSWORD}" "${EXTRA_ENV_JSON}" 2>&1) || true
     CONTAINER_ID=$(echo "${CREATE_OUTPUT}" | tail -1)
     if [ -n "${CONTAINER_ID}" ] && [ ${#CONTAINER_ID} -ge 12 ]; then
         DEPLOY_MODE="local"

@@ -55,7 +55,20 @@ done
 mkdir -p "${HOME}/.openclaw"
 ln -sf "${WORKSPACE}/openclaw.json" "${HOME}/.openclaw/openclaw.json"
 
+# Create symlink for skills CLI: ~/.agents/skills -> ~/skills
+# This makes `skills add -g` install skills directly into ~/skills/ (same as file-sync)
+# Skills in ~/skills/ will be synced to MinIO and persist across container restarts
+mkdir -p "${HOME}/skills"
+mkdir -p "${HOME}/.agents"
+ln -sf "${HOME}/skills" "${HOME}/.agents/skills"
+
 log "Worker config pulled successfully"
+
+# Restore skills from MinIO if skills directory is empty but skills-lock.json exists
+if [ -f "${WORKSPACE}/skills-lock.json" ] && [ -z "$(ls -A ${WORKSPACE}/skills 2>/dev/null | grep -v file-sync)" ]; then
+    log "Found skills-lock.json but skills directory is empty, restoring skills..."
+    cd "${WORKSPACE}" && skills experimental_install -y 2>/dev/null || log "Warning: skills restore failed, will need to reinstall"
+fi
 
 # Ensure hiclaw-sync symlink is functional (wrapper script calls workspace path)
 ln -sf "${WORKSPACE}/skills/file-sync/scripts/hiclaw-sync.sh" /usr/local/bin/hiclaw-sync 2>/dev/null || true
@@ -66,14 +79,29 @@ log "HOME set to ${HOME} (workspace files will be synced to MinIO)"
 # Step 3: Start file sync
 # ============================================================
 
-# Local -> Remote: real-time watch for Worker-generated content only
-# Exclude Manager-managed configs (shared/ is separate, not under workspace)
-mc mirror --watch "${WORKSPACE}/" "hiclaw/hiclaw-storage/agents/${WORKER_NAME}/" --overwrite \
-    --exclude "openclaw.json" --exclude "AGENTS.md" --exclude "SOUL.md" \
-    --exclude "mcporter-servers.json" --exclude "skills/**" \
-    --exclude ".openclaw/**" --exclude ".cache/**" --exclude ".npm/**" \
-    --exclude ".local/**" --exclude ".mc/**" &
-log "Local->Remote sync started (PID: $!)"
+# Local -> Remote: change-triggered sync (avoids mc mirror --watch TOCTOU crash bug)
+# Note: mc mirror --watch has a bug where it crashes when source files are deleted
+# during atomic operations (e.g., npm install, skills add). This approach:
+# - Uses find to detect recent file changes (lightweight, local filesystem only)
+# - Only runs mc mirror when changes are detected (avoids unnecessary network IO)
+# - mc mirror itself only transfers changed files (incremental)
+(
+    while true; do
+        # Check for files modified in the last 10 seconds
+        CHANGED=$(find "${WORKSPACE}/" -type f -newermt "10 seconds ago" 2>/dev/null | head -1)
+        if [ -n "${CHANGED}" ]; then
+            if ! mc mirror "${WORKSPACE}/" "hiclaw/hiclaw-storage/agents/${WORKER_NAME}/" --overwrite \
+                --exclude "openclaw.json" --exclude "AGENTS.md" --exclude "SOUL.md" \
+                --exclude "mcporter-servers.json" --exclude ".agents/**" \
+                --exclude ".openclaw/**" --exclude ".cache/**" --exclude ".npm/**" \
+                --exclude ".local/**" --exclude ".mc/**" 2>&1; then
+                log "WARNING: Local->Remote sync failed"
+            fi
+        fi
+        sleep 5
+    done
+) &
+log "Local->Remote change-triggered sync started (PID: $!)"
 
 # Remote -> Local: periodic pull (configs from Manager + shared data)
 # On-demand pull via file-sync skill when Manager notifies
