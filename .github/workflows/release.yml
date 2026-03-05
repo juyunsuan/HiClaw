@@ -112,8 +112,9 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
 
-          # Rename current.md → vX.Y.Z.md
+          # Rename current.md → vX.Y.Z.md and update title
           cp changelog/current.md "changelog/${VERSION}.md"
+          sed -i "s/^# Changelog (Unreleased)/# Changelog ${VERSION}/" "changelog/${VERSION}.md"
           cat > changelog/current.md << 'EOF'
           # Changelog (Unreleased)
 
